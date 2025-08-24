@@ -45,6 +45,32 @@
     <title>数学练习应用</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+        import { getFirestore, collection, addDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyB4RUCYiy3-Cc6U1SBBHE8q-42pxbQiSys",
+            authDomain: "posinega-71536.firebaseapp.com",
+            projectId: "posinega-71536",
+            storageBucket: "posinega-71536.firebasestorage.app",
+            messagingSenderId: "780711379324",
+            appId: "1:780711379324:web:c95a12472690cf5e9424f9",
+            measurementId: "G-EENRDCQ8WS"
+        };
+
+        // Initialize Firebase and Firestore
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        // Note: Analytics is not initialized to avoid unnecessary data collection
+
+        // Expose Firestore db to global scope for use in non-module scripts
+        window.db = db;
+        window.addDoc = addDoc;
+        window.collection = collection;
+    </script>
     <style>
         body {
             -webkit-user-select: none;
@@ -97,7 +123,7 @@
                 display: block;
             }
             #downloadImage {
-                display: none; /* Hide download button on mobile to prioritize sharing */
+                display: none;
             }
         }
     </style>
@@ -110,6 +136,19 @@
         <div id="difficultySection" class="mb-4">
             <label for="userName" class="block text-center mb-2 text-base sm:text-lg">输入你的名字:</label>
             <input id="userName" type="text" class="w-full p-2 border rounded text-base sm:text-lg mb-2" placeholder="请输入名字" oninput="toggleStartButton()">
+            <label for="classSelect" class="block text-center mb-2 text-base sm:text-lg">选择班级:</label>
+            <select id="classSelect" class="w-full p-2 border rounded text-base sm:text-lg mb-2" onchange="toggleStartButton()">
+                <option value="">请选择班级</option>
+                <option value="J1Y">J1Y</option>
+                <option value="J1F">J1F</option>
+                <option value="J1K">J1K</option>
+                <option value="J1L">J1L</option>
+                <option value="J1T">J1T</option>
+                <option value="J1J">J1J</option>
+                <option value="J1H">J1H</option>
+                <option value="J1P">J1P</option>
+                <option value="J1C">J1C</option>
+            </select>
             <label for="difficulty" class="block text-center mb-2 text-base sm:text-lg">选择难度:</label>
             <select id="difficulty" class="w-full p-2 border rounded text-base sm:text-lg">
                 <option value="basic">基础（两位单笔运算）</option>
@@ -150,6 +189,7 @@
         <div id="resultsSection" class="hidden">
             <h2 class="text-lg sm:text-xl font-bold text-center mb-4">结果</h2>
             <p id="userNameDisplay" class="text-center mb-2 text-base sm:text-lg"></p>
+            <p id="classDisplay" class="text-center mb-2 text-base sm:text-lg"></p>
             <p id="completionDateTime" class="text-center mb-2 text-base sm:text-lg"></p>
             <p id="difficultyDisplay" class="text-center mb-2 text-base sm:text-lg"></p>
             <p id="timeTaken" class="text-center mb-2 text-base sm:text-lg"></p>
@@ -176,6 +216,37 @@
     </div>
 
     <script>
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+            return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+            if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+                try {
+                    var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                    var firstSheetName = workbook.SheetNames[0];
+                    var worksheet = workbook.Sheets[firstSheetName];
+                    var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                    var filteredData = jsonData.filter(row => row.some(filledCell));
+                    var headerRowIndex = filteredData.findIndex((row, index) =>
+                        row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                    );
+                    if (headerRowIndex === -1 || headerRowIndex > 25) {
+                        headerRowIndex = 0;
+                    }
+                    var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+                    csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                    return csv;
+                } catch (e) {
+                    console.error(e);
+                    return "";
+                }
+            }
+            return gk_fileData[filename] || "";
+        }
+
         let correctAnswer = 0;
         let score = 0;
         let total = 0;
@@ -185,6 +256,7 @@
         let correctAnswers = [];
         let startTime;
         let userName = '';
+        let selectedClass = '';
         let selectedDifficulty = '';
         const encouragements = [
             '干得漂亮！继续加油！',
@@ -229,9 +301,11 @@
 
         function toggleStartButton() {
             const userNameInput = document.getElementById('userName');
+            const classSelect = document.getElementById('classSelect');
             const startButton = document.getElementById('startButton');
             userName = userNameInput.value.trim();
-            startButton.disabled = userName === '';
+            selectedClass = classSelect.value;
+            startButton.disabled = userName === '' || selectedClass === '';
         }
 
         function addToAnswer(char) {
@@ -405,6 +479,7 @@
             correctAnswers = [];
             startTime = Date.now();
             selectedDifficulty = document.getElementById('difficulty').options[document.getElementById('difficulty').selectedIndex].text;
+            selectedClass = document.getElementById('classSelect').value;
             document.getElementById('score').textContent = score;
             document.getElementById('total').textContent = total;
             document.getElementById('difficultySection').classList.add('hidden');
@@ -441,8 +516,10 @@
             document.getElementById('resultsSection').classList.remove('hidden');
             const endTime = Date.now();
             const timeTaken = (endTime - startTime) / 1000;
+            const completionDateTime = formatDateTime(new Date());
             document.getElementById('userNameDisplay').textContent = `姓名: ${userName}`;
-            document.getElementById('completionDateTime').textContent = `完成时间: ${formatDateTime(new Date())}`;
+            document.getElementById('classDisplay').textContent = `班级: ${selectedClass}`;
+            document.getElementById('completionDateTime').textContent = `完成时间: ${completionDateTime}`;
             document.getElementById('difficultyDisplay').textContent = `难度: ${selectedDifficulty}`;
             document.getElementById('timeTaken').textContent = `用时: ${formatTime(timeTaken)}`;
             document.getElementById('scoreMessage').textContent = score >= 8 
@@ -460,16 +537,29 @@
                     </tr>`;
             }
             document.getElementById('results').innerHTML = resultsHtml;
+
+            // Save data to Firestore
+            const resultData = {
+                name: userName,
+                class: selectedClass,
+                completionDateTime: completionDateTime,
+                difficulty: selectedDifficulty,
+                score: score,
+                timestamp: new Date().toISOString() // ISO format for sorting
+            };
+            addDoc(collection(db, "quiz_results"), resultData)
+                .then(() => console.log("数据已保存到 Firestore"))
+                .catch(error => console.error("保存数据失败: ", error));
         }
 
         function restart() {
             document.getElementById('resultsSection').classList.add('hidden');
             document.getElementById('difficultySection').classList.remove('hidden');
             document.getElementById('userName').value = '';
+            document.getElementById('classSelect').value = '';
             toggleStartButton();
         }
 
-        // Initialize with difficulty selection visible
         document.getElementById('difficultySection').classList.remove('hidden');
         document.getElementById('quizSection').classList.add('hidden');
         document.getElementById('resultsSection').classList.add('hidden');
